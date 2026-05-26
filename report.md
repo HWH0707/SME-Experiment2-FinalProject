@@ -85,4 +85,14 @@ ChatGPT 기반 AI 도구를 사용했다. 활용 범위는 프로젝트 규칙 �
 
 이 비교는 공정한 baseline이라고 판단한다. proposed 방법과 baseline 모두 같은 affine 거리 보정과 같은 robust multilateration을 공유하며, 차이는 마지막 residual correction을 추가했는지 여부뿐이다. 따라서 성능 향상은 단순히 전혀 다른 문제를 푼 결과가 아니라, 기하 기반 추정 이후 남은 residual feature가 validation split에서 추가적인 오차 보정에 도움이 된 결과로 해석할 수 있다.
 
-장점은 hidden test에서 사용자 수가 달라져도 동작하고, 입력 anchor 개수와 geometry를 직접 반영한다는 점이다. 또한 `main.py`는 `p`를 읽지 않고 `d_hat`과 `p_bs`만 사용하므로 평가 규칙에 맞다. 단점은 training set에서 배운 기지국별 affine 보정값과 residual 패턴이 hidden set에도 비슷하게 유지된다는 가정이 필요하다는 점이다. 만약 hidden data의 측정 bias가 크게 달라지면 residual model의 이득은 줄어들 수 있다. 향후에는 anchor별 NLOS 가능성을 더 명시적으로 추정하거나, validation에서 큰 Max error가 나온 sample을 별도로 완화하는 outlier rejection 단계를 추가할 수 있다.
+제안한 방법의 장점은 hidden test에서 사용자 수가 달라져도 동작하고, 입력 anchor 개수와 geometry를 직접 반영한다는 점이다. 또한 `main.py`는 `p`를 읽지 않고 `d_hat`과 `p_bs`만 사용하므로 평가 규칙에 맞다. ML 모델도 전체 좌표를 직접 예측하는 역할이 아니라, 기하 기반 초기 위치가 남긴 보정량만 학습하도록 제한했기 때문에 위치 추정 문제의 물리적 구조를 어느 정도 유지할 수 있다.
+
+# 한계 및 보완 방향
+
+첫 번째 한계는 training data의 크기이다. 현재 모델은 제공된 700개 sample에서 기지국별 거리 보정값과 residual correction 패턴을 학습했다. 따라서 hidden data의 측정 환경이나 bias 분포가 training data와 크게 달라지면, validation에서 확인한 만큼의 개선이 그대로 유지되지 않을 수 있다.
+
+두 번째 한계는 큰 outlier에 대한 처리이다. soft-L1 기반 robust multilateration과 residual correction을 사용했지만, 일부 anchor의 거리 측정값이 매우 크게 어긋나는 경우에는 Max error가 여전히 남아 있다. 실제 validation에서도 평균 오차와 P90은 줄었지만, Max error는 완전히 제거되지 않았다. 이는 NLOS와 같은 극단적인 측정 오류를 별도로 탐지하는 단계가 추가되면 더 개선될 수 있는 부분이다.
+
+세 번째 한계는 모델 파일 호환성이다. 기본 제출 모델은 `model.pkl`에 저장된 HGB+ExtraTrees 앙상블이지만, scikit-learn 버전 차이로 pickle 로드 문제가 생길 가능성을 고려해 `model_fallback.npz`도 함께 준비했다. fallback 모델은 실행 안정성을 높이기 위한 장치이지만, primary 앙상블보다 성능이 낮을 수 있다. 따라서 최종 성능 측면에서는 `model.pkl`이 정상적으로 로드되는 환경이 가장 바람직하다.
+
+향후 개선 방향으로는 anchor별 NLOS 가능성을 별도 feature로 추정하거나, validation에서 큰 Max error가 나온 sample을 분석해 outlier rejection 단계를 추가할 수 있다. 또한 기지국 배치나 측정 환경이 바뀌는 경우에는 affine calibration과 residual correction 모델을 다시 학습하는 방식으로 일반화 성능을 확인할 필요가 있다.

@@ -1,3 +1,6 @@
+학번: 12214300
+이름: 황웅현
+
 # 모티베이션 & 인트로
 
 이번 프로젝트의 입력은 18개 기지국에서 측정한 RTT 기반 거리값 `d_hat`이고, 출력은 각 사용자의 2차원 위치 `p_hat`이다. 중간 발표 전후 실험에서 반복적으로 확인한 점은, 거리 측정값에는 단순 잡음뿐 아니라 기지국별 bias, 일부 큰 outlier, 사용자 위치에 따른 기하학적 민감도 차이가 함께 섞인다는 것이다. 따라서 측정값을 바로 위치로 회귀하거나, 모든 센서 값을 같은 신뢰도로 평균내는 방식은 데이터가 조금만 바뀌어도 오차가 커질 수 있다.
@@ -96,3 +99,25 @@ ChatGPT 기반 AI 도구를 사용했다. 활용 범위는 프로젝트 규칙 �
 세 번째 한계는 모델 파일 호환성이다. 기본 제출 모델은 `model.pkl`에 저장된 HGB+ExtraTrees 앙상블이지만, scikit-learn 버전 차이로 pickle 로드 문제가 생길 가능성을 고려해 `model_fallback.npz`도 함께 준비했다. fallback 모델은 실행 안정성을 높이기 위한 장치이지만, primary 앙상블보다 성능이 낮을 수 있다. 따라서 최종 성능 측면에서는 `model.pkl`이 정상적으로 로드되는 환경이 가장 바람직하다.
 
 향후 개선 방향으로는 anchor별 NLOS 가능성을 별도 feature로 추정하거나, validation에서 큰 Max error가 나온 sample을 분석해 outlier rejection 단계를 추가할 수 있다. 또한 기지국 배치나 측정 환경이 바뀌는 경우에는 affine calibration과 residual correction 모델을 다시 학습하는 방식으로 일반화 성능을 확인할 필요가 있다.
+
+# Reference
+
+1. A. Beck, P. Stoica, and J. Li, "Exact and approximate solutions of source localization problems," IEEE Transactions on Signal Processing, vol. 56, no. 5, pp. 1770-1778, 2008. DOI: 10.1109/TSP.2007.909342.
+
+   참고한 내용은 거리 또는 거리차 측정값을 이용한 source localization 문제를 least-squares 최적화 문제로 정식화하는 관점이다. 본 프로젝트에서 직접 설계한 부분은 이 거리 기반 위치 추정 구조를 제공 데이터의 RTT 특성에 맞게 변형한 것이다. 구체적으로 논문의 squared range LS 해법을 그대로 구현하지 않고, 기지국별 affine calibration으로 거리 bias를 먼저 줄인 뒤 soft-L1 기반 robust multilateration으로 `p_geo`를 계산했다. 이후 `p_geo`가 남긴 residual만 ML로 보정하도록 확장한 부분이 본 프로젝트의 차이점이다.
+
+2. P. J. Huber, "Robust Estimation of a Location Parameter," The Annals of Mathematical Statistics, vol. 35, no. 1, pp. 73-101, 1964. DOI: 10.1214/aoms/1177703732.
+
+   참고한 내용은 이상치가 있는 데이터에서 일반적인 least squares가 민감해질 수 있고, robust한 손실을 사용하는 것이 필요하다는 관점이다. 본 프로젝트에서 직접 구현한 부분은 anchor별 거리 residual이 크게 튀는 경우에도 전체 위치가 한쪽으로 과도하게 끌려가지 않도록 robust multilateration 단계를 둔 것이다. 단, Huber estimator 자체를 그대로 구현한 것은 아니며, `scipy.optimize.least_squares`의 soft-L1 loss를 위치 추정 residual에 적용하는 방식으로 변형했다.
+
+3. J. H. Friedman, "Greedy Function Approximation: A Gradient Boosting Machine," The Annals of Statistics, vol. 29, no. 5, pp. 1189-1232, 2001. DOI: 10.1214/aos/1013203451.
+
+   참고한 내용은 Gradient Boosting Machine이 약한 예측기를 순차적으로 결합하여 비선형 함수를 근사하는 방식이다. 본 프로젝트에서 직접 설계한 부분은 gradient boosting 계열 모델을 사용자 좌표 전체를 직접 예측하는 black-box 모델로 쓰지 않은 점이다. 대신 기하 기반 초기 위치 `p_geo`를 먼저 구하고, 그 이후 남은 `delta = p_true - p_geo`만 예측하는 residual correction 모델의 한 구성요소로 사용했다. 따라서 boosting은 전체 측위 문제를 대체하는 것이 아니라, 기하 기반 추정 이후의 잔차 보정에 제한적으로 사용되었다.
+
+4. P. Geurts, D. Ernst, and L. Wehenkel, "Extremely randomized trees," Machine Learning, vol. 63, pp. 3-42, 2006. DOI: 10.1007/s10994-006-6226-1.
+
+   참고한 내용은 Extremely Randomized Trees가 feature와 split point 선택에 무작위성을 넣어 다양한 feature 조합의 비선형 패턴을 학습할 수 있다는 점이다. 본 프로젝트에서 직접 설계한 부분은 ExtraTrees를 단독 최종 모델로 사용하지 않고, HGB와 평균 앙상블하여 residual correction에 사용한 것이다. 특히 anchor별 residual feature와 geometry feature에서 나타나는 국소적인 오차 패턴을 보완하는 역할로 ExtraTrees를 배치한 점이 본 프로젝트의 적용 방식이다.
+
+5. 성주현, "측위 안정화를 위한 End to End 기반의 Wi-Fi RTT 네트워크 구조 설계," 멀티미디어학회논문지, vol. 24, no. 5, pp. 676-683, 2021. DOI: 10.9717/kmms.2020.24.5.676.
+
+   참고한 내용은 Wi-Fi RTT 기반 실내 측위에서 NLOS 환경과 multipath fading으로 인해 RTT 거리 추정값이 불안정해지고, 이를 보정한 뒤 trilateration 단계와 결합하는 것이 중요하다는 문제의식이다. 본 프로젝트에서 직접 설계한 부분은 end-to-end neural network 구조를 그대로 사용하지 않고, 기지국별 affine calibration으로 거리 bias를 줄인 뒤 soft-L1 robust multilateration으로 `p_geo`를 먼저 계산한 점이다. 이후 ML은 전체 위치를 직접 예측하지 않고 `p_geo` 이후의 residual correction에만 사용하였다. 따라서 이 논문은 RTT 보정과 위치 추정 결합의 배경 참고문헌으로 사용했고, 최종 알고리즘 구조는 본 프로젝트 데이터와 제출 조건에 맞게 별도로 구성하였다.
